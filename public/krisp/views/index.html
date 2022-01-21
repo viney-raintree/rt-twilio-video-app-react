@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta id="theme-color" name="theme-color" content="#fff" />
+    <base target="_blank" />
+    <title>Krisp Calling App Stream Example</title>
+    <link rel="stylesheet" href="index.css" />
+  </head>
+  <body>
+    <div id="modelFilterContainer">
+      <label for="models">Select a model</label>
+      <select name="models" id="models">
+        <option value="NC">NC</option>
+        <option value="VAD">VAD</option>
+      </select>
+    </div>
+
+    <div id="nc_container">
+      <video id="localVideo" autoplay muted playsinline></video>
+      <video id="remoteVideo" autoplay playsinline></video>
+
+      <div>
+        <button id="startButton">Start</button>
+        <button id="callButton">Call</button>
+        <button id="hangupButton">Hang Up</button>
+        <button id="krispToggle">Toggle Krisp</button>
+        <button id="stopButton">Stop</button>
+      </div>
+    </div>
+
+    <div id="vad_container">
+      <button id="startButtonVAD">Start</button>
+      <button id="stopButtonVAD">Stop</button>
+    </div>
+
+    <script type="module" src="index.js"></script>
+  </body>
+</html>

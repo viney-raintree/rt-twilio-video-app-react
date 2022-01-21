@@ -29,6 +29,7 @@ export interface IVideoContext {
   getLocalAudioTrack: (deviceId?: string) => Promise<LocalAudioTrack>;
   isAcquiringLocalTracks: boolean;
   removeLocalVideoTrack: () => void;
+  removeLocalAudioTrack: () => void;
   isSharingScreen: boolean;
   isUsingANC: boolean;
   enableANC: () => void;
@@ -64,7 +65,6 @@ export function VideoProvider({ options, children, onError = () => {} }: VideoPr
     disableANC,
     enableANC,
     isUsingANC,
-    noiseCancellationKind,
     getLocalVideoTrack,
     getLocalAudioTrack,
     isAcquiringLocalTracks,
@@ -103,13 +103,14 @@ export function VideoProvider({ options, children, onError = () => {} }: VideoPr
         disableANC,
         enableANC,
         isUsingANC,
-        noiseCancellationKind,
+        noiseCancellationKind: 'krisp',
         onError: onErrorCallback,
         getLocalVideoTrack,
         getLocalAudioTrack,
         connect,
         isAcquiringLocalTracks,
         removeLocalVideoTrack,
+        removeLocalAudioTrack,
         isSharingScreen,
         toggleScreenShare,
         getAudioAndVideoTracks,

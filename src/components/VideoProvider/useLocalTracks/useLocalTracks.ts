@@ -1,7 +1,7 @@
 import { DEFAULT_VIDEO_CONSTRAINTS, SELECTED_AUDIO_INPUT_KEY, SELECTED_VIDEO_INPUT_KEY } from '../../../constants';
 import { getDeviceInfo, isPermissionDenied } from '../../../utils';
 import { useCallback, useState } from 'react';
-import { NoiseCancellation, removeNoiseFromMSTrack } from '../../../anc/noiseCancellation';
+import { initANC } from '../../../anc/noiseCancellation';
 import Video, {
   LocalVideoTrack,
   LocalAudioTrack,
@@ -10,94 +10,92 @@ import Video, {
 } from 'twilio-video';
 
 const noiseCancellation_activeInitially = false;
-async function removeNoiseFromLocalAudioTrack(localAudioTrack: LocalAudioTrack) {
-  const { track, noiseCancellation } = await removeNoiseFromMSTrack(localAudioTrack.mediaStreamTrack);
-  localAudioTrack = new LocalAudioTrack(track);
 
-  if (noiseCancellation) {
-    noiseCancellation_activeInitially ? noiseCancellation.turnOn() : noiseCancellation.turnOff();
-  }
-
-  return {
-    localAudioTrack,
-    noiseCancellation,
+// updates audio track options depending on ANC setting.
+function updateAudioOptions(options: CreateLocalTrackOptions, useANC: boolean) {
+  options = {
+    channelCount: { ideal: 1 },
+    echoCancellation: { ideal: true },
+    autoGainControl: { ideal: false },
+    sampleRate: { ideal: 48000 },
+    ...options,
+    noiseSuppression: { ideal: !useANC },
   };
 }
 
-function updateAudioOptions(options: CreateLocalTrackOptions) {
-  options.channelCount = { ideal: 1 };
-  options.noiseSuppression = { ideal: false };
-  options.echoCancellation = { ideal: true };
-  options.autoGainControl = { ideal: false };
-  options.sampleRate = { ideal: 48000 };
-}
+async function video_createLocalTracks(options: CreateLocalTracksOptions, useANC: boolean) {
+  const anc = await initANC();
 
-async function video_createLocalTracks(options: CreateLocalTracksOptions) {
-  let noiseCancellation: NoiseCancellation | null = null;
   if (options.audio) {
     options.audio = typeof options.audio === 'object' ? options.audio : {};
-    updateAudioOptions(options.audio);
+    updateAudioOptions(options.audio, useANC);
   }
 
   const localTracks = await Video.createLocalTracks(options);
   const localVideoTrack = localTracks.find(track => track.kind === 'video') as LocalVideoTrack;
   let localAudioTrack = localTracks.find(track => track.kind === 'audio') as LocalAudioTrack;
-  if (localAudioTrack) {
-    ({ localAudioTrack, noiseCancellation } = await removeNoiseFromLocalAudioTrack(localAudioTrack));
+  if (localAudioTrack && useANC) {
+    localAudioTrack = new LocalAudioTrack(anc.connect(localAudioTrack.mediaStreamTrack));
   }
-  return { localVideoTrack, localAudioTrack, noiseCancellation };
+  return { localVideoTrack, localAudioTrack };
 }
 
-async function video_createLocalAudioTrack(options: CreateLocalTrackOptions) {
-  updateAudioOptions(options);
+async function video_createLocalAudioTrack(useANC: boolean, deviceId?: string) {
+  const anc = await initANC();
+
+  const options: CreateLocalTrackOptions = {};
+  if (deviceId) {
+    options.deviceId = { exact: deviceId };
+  }
+  updateAudioOptions(options, useANC);
+
   const localAudioTrack = await Video.createLocalAudioTrack(options);
-  const rnnNoiseTrack = await removeNoiseFromLocalAudioTrack(localAudioTrack);
-  return rnnNoiseTrack.localAudioTrack;
+
+  if (useANC) {
+    const cleanTrack = anc.connect(localAudioTrack.mediaStreamTrack);
+    return new LocalAudioTrack(cleanTrack);
+  } else {
+    return localAudioTrack;
+  }
 }
 
 export default function useLocalTracks() {
   const [audioTrack, setAudioTrack] = useState<LocalAudioTrack>();
   const [videoTrack, setVideoTrack] = useState<LocalVideoTrack>();
-  const [noiseCancellation, setNoiseCancellation] = useState<NoiseCancellation | null>(null);
   const [isAcquiringLocalTracks, setIsAcquiringLocalTracks] = useState(false);
   const [isUsingANC, setIsUsingNoiseCancellation] = useState(noiseCancellation_activeInitially);
-  const [noiseCancellationKind, setNoiseCancellationKind] = useState<string>('none');
 
-  const enableANC = useCallback(() => {
-    if (noiseCancellation) {
-      console.log('enabling noise cancellation');
-      noiseCancellation.turnOn();
-      setIsUsingNoiseCancellation(noiseCancellation.isActive());
-    } else {
-      setIsUsingNoiseCancellation(false);
-    }
-  }, [noiseCancellation]);
+  const enableANC = useCallback(async () => {
+    // const anc = await getANC();
+    // console.log('enabling noise cancellation');
+    // if (audioTrack) {
+    //   // we must stop the existing audio track
+    //   // and then
+    //   console.log('enableANC stopping old track');
+    //   audioTrack.stop();
+    //   setAudioTrack(undefined);
+    // }
+    setIsUsingNoiseCancellation(true);
+  }, []);
 
   const disableANC = useCallback(() => {
-    if (noiseCancellation) {
-      console.log('disabling noise cancellation');
-      noiseCancellation.turnOff();
-      setIsUsingNoiseCancellation(noiseCancellation.isActive());
-    }
+    // if (anc) {
+    //   console.log('disabling noise cancellation');
+    //   anc.disconnect();
+    //   setIsUsingNoiseCancellation(false);
+    // }
     setIsUsingNoiseCancellation(false);
-  }, [noiseCancellation]);
-
-  const getLocalAudioTrack = useCallback((deviceId?: string) => {
-    const options: CreateLocalTrackOptions = {};
-
-    // options preferred for krisp
-    options.channelCount = { ideal: 1 };
-    options.noiseSuppression = { ideal: false };
-    options.echoCancellation = { ideal: true };
-    options.autoGainControl = { ideal: false };
-    options.sampleRate = { ideal: 48000 };
-
-    if (deviceId) {
-      options.deviceId = { exact: deviceId };
-    }
-
-    return video_createLocalAudioTrack(options);
   }, []);
+
+  const getLocalAudioTrack = useCallback(
+    (deviceId?: string) => {
+      return video_createLocalAudioTrack(isUsingANC, deviceId).then(newTrack => {
+        setAudioTrack(newTrack);
+        return newTrack;
+      });
+    },
+    [isUsingANC]
+  );
 
   const getLocalVideoTrack = useCallback(async () => {
     const selectedVideoDeviceId = window.localStorage.getItem(SELECTED_VIDEO_INPUT_KEY);
@@ -171,28 +169,21 @@ export default function useLocalTracks() {
         (hasSelectedAudioDevice ? { deviceId: { exact: selectedAudioDeviceId! } } : hasAudioInputDevices),
     };
 
-    return video_createLocalTracks(localTrackConstraints)
-      .then(tracksAndRnnNoise => {
-        const newVideoTrack = tracksAndRnnNoise.localVideoTrack;
-        const newAudioTrack = tracksAndRnnNoise.localAudioTrack;
-        if (newVideoTrack) {
-          setVideoTrack(newVideoTrack);
+    return video_createLocalTracks(localTrackConstraints, isUsingANC)
+      .then(({ localVideoTrack, localAudioTrack }) => {
+        if (localVideoTrack) {
+          setVideoTrack(localVideoTrack);
           // Save the deviceId so it can be picked up by the VideoInputList component. This only matters
           // in cases where the user's video is disabled.
           window.localStorage.setItem(
             SELECTED_VIDEO_INPUT_KEY,
-            newVideoTrack.mediaStreamTrack.getSettings().deviceId ?? ''
+            localVideoTrack.mediaStreamTrack.getSettings().deviceId ?? ''
           );
         }
 
-        if (newAudioTrack) {
-          setAudioTrack(newAudioTrack);
+        if (localAudioTrack) {
+          setAudioTrack(localAudioTrack);
         }
-
-        setNoiseCancellation(tracksAndRnnNoise.noiseCancellation);
-        setNoiseCancellationKind(
-          tracksAndRnnNoise.noiseCancellation ? tracksAndRnnNoise.noiseCancellation.kind() : 'none'
-        );
 
         // These custom errors will be picked up by the MediaErrorSnackbar component.
         if (isCameraPermissionDenied && isMicrophonePermissionDenied) {
@@ -210,7 +201,7 @@ export default function useLocalTracks() {
         }
       })
       .finally(() => setIsAcquiringLocalTracks(false));
-  }, [audioTrack, videoTrack, isAcquiringLocalTracks]);
+  }, [audioTrack, videoTrack, isAcquiringLocalTracks, isUsingANC]);
 
   const localTracks = [audioTrack, videoTrack].filter(track => track !== undefined) as (
     | LocalAudioTrack
@@ -222,7 +213,6 @@ export default function useLocalTracks() {
     disableANC,
     enableANC,
     isUsingANC,
-    noiseCancellationKind,
     getLocalVideoTrack,
     getLocalAudioTrack,
     isAcquiringLocalTracks,

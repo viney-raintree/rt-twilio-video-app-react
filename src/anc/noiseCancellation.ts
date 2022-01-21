@@ -1,5 +1,12 @@
 import { RNNoiseNode } from './rnnoise/rnnoisenode';
-import { makeKrisp } from './krisp/krispsdk';
+import { makeKrisp } from './krisp/krisp_wrapper.js';
+
+export interface NoiseCancellation2 {
+  isActive: () => boolean; // is noise cancellation currently active?
+  disconnect: () => void;
+  connect: (track: MediaStreamTrack) => MediaStreamTrack;
+  kind: () => string;
+}
 
 export interface NoiseCancellation {
   isActive: () => boolean; // is noise cancellation currently active?
@@ -14,18 +21,50 @@ export interface NoiseCancellationWithTrack {
 }
 
 const urlParams = new URLSearchParams(window.location.search);
-const ancOption = urlParams.get('anc') || 'krisp';
-let anc = ancOption.toLowerCase();
+const ancOption = (urlParams.get('anc') || 'krisp').toLowerCase();
+
+let anc: NoiseCancellation2 | null = null;
+export async function initANC(): Promise<NoiseCancellation2> {
+  if (!anc) {
+    anc = await initKrisp();
+  }
+  return anc;
+}
+
+async function initKrisp() {
+  // const KrispModule = makeKrisp();
+  const Krisp = await makeKrisp();
+  await Krisp.init(false /* isVad */);
+
+  return {
+    connect: (track: MediaStreamTrack) => {
+      const mediaStream = Krisp.connect(new MediaStream([track]));
+      if (!mediaStream) {
+        throw new Error('Error connecting to Krisp');
+      }
+      const cleanTrack = mediaStream.getAudioTracks()[0];
+      if (!cleanTrack) {
+        throw new Error('Error getting clean track from Krisp');
+      }
+      return cleanTrack;
+    },
+    disconnect: () => {
+      Krisp.disconnect();
+    },
+    isActive: () => {
+      return Krisp.isEnabled();
+    },
+    kind: () => 'krisp',
+  };
+}
 
 export async function removeNoiseFromMSTrack(msTrack: MediaStreamTrack): Promise<NoiseCancellationWithTrack> {
-  if (anc === 'rnnoise') {
+  if (ancOption === 'rnnoise') {
     console.warn('!*** Using rnnoise *** !');
     const noiseCancellationAndTrack = await rnnNoise_removeNoiseFromTrack(msTrack);
     return noiseCancellationAndTrack;
-  } else if (anc === 'krisp') {
-    console.warn('!*** Using krisp *** !');
-    const noiseCancellationAndTrack = await krisp_removeNoiseFromTrack(msTrack);
-    return noiseCancellationAndTrack;
+  } else if (ancOption === 'krisp') {
+    throw new Error('Krisp old version not implemented');
   } else {
     console.warn('!*** Not using rnnoise *** !');
     return {
@@ -33,30 +72,6 @@ export async function removeNoiseFromMSTrack(msTrack: MediaStreamTrack): Promise
       noiseCancellation: null,
     };
   }
-}
-export async function krisp_removeNoiseFromTrack(track: MediaStreamTrack): Promise<NoiseCancellationWithTrack> {
-  const KrispModule = makeKrisp({
-    workletScriptNC: '/krisp/wasm/debug/krisp-nc-processor.js',
-    workletScriptVAD: '/krisp/wasm/debug/krisp-vad-processor.js',
-    model8: 'https://cdn.krisp.ai/scripts/ext/models/small_8k.thw',
-    model16: 'https://cdn.krisp.ai/scripts/ext/models/small_16k.thw',
-    model_vad: '/krisp/VAD_weight.thw',
-  });
-
-  await KrispModule.init(false);
-
-  const stream = new MediaStream([track]);
-  const cleanStream = KrispModule.getStream(stream);
-
-  return {
-    noiseCancellation: {
-      isActive: () => KrispModule.isEnabled(),
-      turnOn: () => KrispModule.toggle(true),
-      turnOff: () => KrispModule.toggle(false),
-      kind: () => 'krisp',
-    },
-    track: cleanStream.getTracks()[0],
-  };
 }
 
 export async function rnnNoise_removeNoiseFromTrack(track: MediaStreamTrack): Promise<NoiseCancellationWithTrack> {

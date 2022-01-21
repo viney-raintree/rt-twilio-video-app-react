@@ -1,0 +1,51 @@
+div#nc_container {
+  margin: 0 auto 0 auto;
+  max-width: 40em;
+  padding: 1em 1.5em 1.3em 1.5em;
+}
+
+button {
+  margin: 0 20px 0 0;
+  width: 100px;
+}
+
+p.borderBelow {
+  margin: 0 0 1.5em 0;
+  padding: 0 0 1.5em 0;
+}
+
+video {
+  background: #222;
+  height: 225px;
+  margin: 0 0 20px 0;
+  vertical-align: top;
+  width: calc(50% - 13px);
+}
+
+video#localVideo {
+  margin: 0 20px 20px 0;
+}
+
+select#models {
+  margin: 0px 0px 20px 0px;
+}
+
+@media (max-width: 400px) {
+  button {
+    width: 83px;
+  }
+
+  button {
+    margin: 0 11px 10px 0;
+  }
+
+  video {
+    height: 90px;
+    margin: 0 0 10px 0;
+    width: calc(50% - 7px);
+  }
+
+  video#localVideo {
+    margin: 0 10px 20px 0;
+  }
+}

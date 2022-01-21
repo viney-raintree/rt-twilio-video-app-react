@@ -1,129 +1,366 @@
-const errors = {
-  not_ready: 'Not initialized, first run Krisp.init()',
-  no_stream: 'No stream, run Krisp.getStream(stream)',
-  no_support: 'Platform not supported',
-  already_ready: 'Krisp already initialized',
-  invalid_stream: 'Invalid MediaStream',
-};
+const NativeAudioContext =
+    typeof window.AudioContext !== "undefined"
+        ? window.AudioContext
+        : typeof window.webkitAudioContext !== "undefined"
+            ? window.webkitAudioContext
+            : null;
 
-const errorLog = code => {
-  throw new Error(errors[code] || 'Unspecified error');
-};
+const errors = Object.freeze({
+    not_init: "Not initialized, first run Krisp.init()",
+    no_stream: "No stream, run Krisp.getStream(stream)",
+    no_support: "Platform not supported",
+    already_init: "Krisp already initialized, first call krisp.destroy()",
+    invalid_stream: "Invalid MediaStream",
+    invalid_state: "Invalid state",
+    not_connected: "Krisp is not connected to any valid stream, please call Krisp.connect(stream) first"
+});
 
-const loadModuleData = async module => {
-  return new Promise((resolve, reject) => {
-    const api = new XMLHttpRequest();
-    api.onload = res => {
-      res ? resolve(res.target.response) : reject();
-    };
-    api.responseType = 'arraybuffer';
-    api.open('GET', module, true);
-    api.send();
-  });
-};
+const states = Object.freeze({
+    initialized: "initialized",
+    not_initialized: "not_initialized",
+    connected: "connected",
+    disconnected: "disconnected",
+    enabled: "enabled",
+    disabled: "disabled",
+});
 
-const addWorkletAndModel = async (audioCtx, { workletNodeName, workletScript, model8, model16, model_vad }) => {
-    await audioCtx.audioWorklet.addModule(workletScript);
-    const filter = new AudioWorkletNode(audioCtx, workletNodeName);
-    if (workletNodeName === 'krisp-nc-processor') {
-        const model = audioCtx.sampleRate <= 8000 ? model8 : model16;
-        const moduleData = await loadModuleData(model);
-        filter.port.postMessage({ type: 'init', data: moduleData });
-    } else if (workletNodeName === 'krisp-vad-processor') {
-        const moduleDataVAD = await loadModuleData(model_vad);
-        filter.port.postMessage({ type: 'init-vad', data: moduleDataVAD });  
-    } else {
-        console.log("Unexpected workletNodeName:", workletNodeName);
+class KrispFilter extends AudioWorkletNode {
+    enable() {
+        this.parameters.get("enabled").value = 1;
     }
-    return filter;
-};
 
-const checkCompatibility = () => {
-  var AudioContext = window.AudioContext || window.webkitAudioContext || false;
-  if (AudioContext) {
-    const ctx = new AudioContext();
-    if (!ctx.audioWorklet || !ctx.audioWorklet.addModule) return false;
-  } else return false;
-  return true;
-};
+    disable() {
+        this.parameters.get("enabled").value = 0;
+    }
 
-export function Krisp({ workletScriptNC, workletScriptVAD, model8, model16, model_vad }) {
-  let isSupported = checkCompatibility();
-  let ready = false;
-  let hasStream = false;
-  let filter;
-  let audioCtx;
-  let _isVad = false;
+    kill() {
+        this.port.postMessage({type: "destroy"});
+    }
 
-  const isReady = () => {
-    return ready ? 'active' : 'inactive';
-  };
-
-  const isRequired = name => {
-    throw new Error(`${name || 'param'} is required`);
-  };
-
-  const isEnabled = () => {
-    if (!ready) return errorLog('not_ready');
-    return filter.parameters.get('enabled').value;
-  };
-
-  const init = async (isVad) => {
-    console.log("krispsdk.mjs ---- init ------");
-    if (!isSupported) return errorLog('no_support');
-    if (ready) return errorLog('already_ready');
-
-        //audioCtx = new AudioContext();
-        audioCtx = new AudioContext({sampleRate: 32000});
-        let workletNodeName = "krisp-nc-processor";
-        let workletScript = workletScriptNC;
-        if (isVad) {
-            _isVad = isVad;
-            workletNodeName = "krisp-vad-processor";
-            workletScript = workletScriptVAD;
-        }
-        filter = await addWorkletAndModel(audioCtx, { workletNodeName, workletScript, model8, model16, model_vad });
-        ready = true;
-        return true;
-  };
-
-  const filterTrack = track => {
-    const trackStream = new MediaStream([track]);
-    const source = audioCtx.createMediaStreamSource(trackStream);
-    const output = audioCtx.createMediaStreamDestination();
-    source.connect(filter);
-    filter.connect(output);
-    return output.stream.getAudioTracks()[0];
-  };
-
-  const getStream = (stream = isRequired('stream')) => {
-    if (!ready) return errorLog('not_ready');
-    if (stream.constructor.name !== 'MediaStream') return errorLog('invalid_stream');
-
-    if (audioCtx.state !== 'running') audioCtx.resume();
-    const cleanStream = new MediaStream();
-
-    stream.getAudioTracks().forEach(t => cleanStream.addTrack(filterTrack(t)));
-    stream.getVideoTracks().forEach(t => cleanStream.addTrack(t));
-
-    hasStream = true;
-    //cleanStream.on('data', console.log)
-    return cleanStream;
-  };
-
-  const toggle = (bool = isRequired('boolean')) => {
-    if (!ready) return errorLog('not_ready');
-    if (!hasStream) return errorLog('no_stream');
-    filter.parameters.get('enabled').value = bool ? 1 : 0;
-    return bool ? 1 : 0;
-  };
-
-  return {
-    isSupported,
-    isReady,
-    isEnabled,
-    init,
-    getStream,
-    toggle,
-  };
+    setLogging(enabled) {
+        data.filter.port.postMessage({type: "logging", enabled})
+    }
 }
+
+const modelTypes = Object.freeze({
+    model_8: "model8",
+    model_16: "model16",
+    model_32: "model32",
+    model_vad: "modelVad",
+});
+
+const utils = Object.freeze({
+    getProcessor() {
+        return "./../wasm/debug/krisp.processor.js";
+    },
+
+    getNodeName() {
+        return "krisp-processor";
+    },
+
+    getUrlForType(modelType) {
+        const url = "https://cdn.krisp.ai/scripts/ext/models";
+
+        switch (modelType) {
+            case modelTypes.model_8:
+                return `${url}/small_8k.thw`;
+            case modelTypes.model_16:
+                return `${url}/small_16k.thw`;
+            case modelTypes.model_32:
+                return `${url}/nc_weight.thw`;
+            case modelTypes.model_vad:
+                return `${url}/vad.thw`;
+            default:
+                throw new Error(errors.invalid_state);
+        }
+    },
+
+    async getModelData(modelType) {
+        return await utils.loadModelData(utils.getUrlForType(modelType));
+    },
+
+    loadModelData(model) {
+        return new Promise((resolve, reject) => {
+            const api = new XMLHttpRequest();
+            api.onload = (res) => {
+                res ? resolve(res.target.response) : reject();
+            };
+            api.responseType = "arraybuffer";
+            api.open("GET", model, true);
+            api.send();
+        });
+    },
+});
+
+const filterFactory = Object.freeze({
+    async create(audioContext, modelType) {
+        if (!NativeAudioContext) {
+            throw new Error(errors.no_support);
+        }
+
+        if (!(audioContext instanceof NativeAudioContext)) {
+            throw new Error(errors.invalid_state);
+        }
+
+        const nodeName = utils.getNodeName();
+        const script = utils.getProcessor();
+        const data = await utils.getModelData(modelType);
+        await audioContext.audioWorklet.addModule(script);
+        const filter = new KrispFilter(audioContext, nodeName);
+        filter.port.postMessage({
+            isVad: modelType === modelTypes.model_vad,
+            type: "init",
+            data: data,
+            sampleRate: audioContext.sampleRate,
+        });
+        return filter;
+    },
+});
+
+const data = {
+    state: states.not_initialized,
+    context: null,
+    filter: null,
+    contextWasProvided: false,
+    sources: [],
+    outputs: [],
+    streams: [],
+
+    reset() {
+        this.state = states.not_initialized;
+        this.context = null;
+        this.filter = null;
+        this.contextWasProvided = false;
+        this.sources = [];
+        this.outputs = [];
+        this.streams = [];
+    },
+};
+
+
+const Krisp = {
+    FilterFactory: Object.freeze({
+        async create(audioContext, isVad) {
+            const modelType = isVad
+                ? modelTypes.model_vad
+                : data.context.sampleRate <= 8000
+                ? modelTypes.model_8
+                : data.context.sampleRate <= 16000
+                ? modelTypes.model_16
+                : modelTypes.model_32;
+            return await filterFactory.create(audioContext, modelType);
+        }
+    }),
+
+    async init(isVad, audioContext) {
+        if (Krisp.isInitialized()) {
+            throw new Error(errors.already_init);
+        }
+
+        if (!NativeAudioContext) {
+            throw new Error(errors.no_support);
+        }
+
+        data.contextWasProvided = audioContext instanceof NativeAudioContext;
+
+        data.context = data.contextWasProvided
+            ? audioContext
+            : new NativeAudioContext();
+
+        data.filter = await this.FilterFactory.create(data.context, isVad);
+        data.state = states.initialized;
+    },
+
+    connect(stream) {
+        if (Krisp.isConnected()) {
+            return;
+        }
+
+        if (!Krisp.isInitialized()) {
+            throw new Error(errors.not_init);
+        }
+
+        if (!data.filter || !data.context) {
+            throw new Error(errors.invalid_state);
+        }
+
+        if (!(stream instanceof MediaStream)) {
+            throw new Error(errors.invalid_stream);
+        }
+
+        const cleanStream = new MediaStream();
+
+        stream.getAudioTracks().forEach((track) => {
+            const trackStream = new MediaStream([track]);
+            const source = data.context.createMediaStreamSource(trackStream);
+            const output = data.context.createMediaStreamDestination();
+            source.connect(data.filter);
+            data.filter.connect(output);
+            track = output.stream.getAudioTracks()[0];
+            cleanStream.addTrack(track);
+            data.sources.push(source);
+            data.outputs.push(output);
+            data.streams.push(trackStream);
+        });
+        stream.getVideoTracks().forEach((t) => cleanStream.addTrack(t));
+
+        data.state = states.connected;
+
+        return cleanStream;
+    },
+
+    enable() {
+        if (Krisp.isEnabled()) {
+            return;
+        }
+
+        if (!Krisp.isConnected()) {
+            throw new Error(errors.not_connected);
+        }
+
+        if (!data.filter || !data.context) {
+            throw new Error(errors.invalid_state);
+        }
+
+        data.filter.enable();
+
+        data.state = states.enabled;
+    },
+
+    disable() {
+        if (Krisp.isDisabled()) {
+            return;
+        }
+
+        if (!Krisp.isConnected()) {
+            throw new Error(errors.not_connected);
+        }
+
+        if (!data.filter || !data.context) {
+            throw new Error(errors.invalid_state);
+        }
+
+        data.filter.disable();
+
+        data.state = states.disabled;
+    },
+
+    disconnect() {
+        if (Krisp.isDisconnected()) {
+            return;
+        }
+
+        if (Krisp.isEnabled()) {
+            Krisp.disable();
+        }
+
+        if (!data.filter || !data.context) {
+            throw new Error(errors.invalid_state);
+        }
+
+        data.filter.disconnect();
+
+        data.sources.forEach((source) => source.disconnect());
+        data.outputs.forEach((output) => output.disconnect());
+        data.streams.forEach((stream) =>
+            stream.getTracks().forEach((track) => track.stop())
+        );
+
+        data.sources = [];
+        data.outputs = [];
+        data.streams = [];
+
+        data.state = states.disconnected;
+    },
+
+    async destroy() {
+        if (!Krisp.isInitialized()) {
+            return;
+        }
+
+        if (Krisp.isEnabled()) {
+            Krisp.disable();
+        }
+
+        if (Krisp.isConnected()) {
+            Krisp.disconnect();
+        }
+
+        if (data.filter) {
+            data.filter.port.postMessage({type: "destroy"});
+            data.filter = null;
+        }
+
+        if (data.context) {
+            if (!data.contextWasProvided) await data.context.close();
+            data.context = null;
+        }
+
+        data.state = states.not_initialized;
+
+        data.reset();
+    },
+
+    setLogging(enabled) {
+        if (!Krisp.isInitialized()) {
+            return;
+        }
+
+        if (data.filter) {
+            data.filter.setLogging(enabled);
+        }
+    },
+
+    setVADCallback(callback)
+    {
+        if(!(callback instanceof Function))
+        {
+            return;
+        }
+
+        data.filter.port.onmessage = ({data}) =>{
+            callback(data.vadResult);
+        };
+    },
+
+    getContext() {
+        return data.context;
+    },
+
+    getFilter() {
+        return data.filter;
+    },
+
+    getState() {
+        return data.state;
+    },
+
+    isConnected() {
+        return [states.connected, states.enabled, states.disabled].includes(
+            data.state
+        );
+    },
+
+    isInitialized() {
+        return data.state !== states.not_initialized;
+    },
+
+    isDisabled() {
+        return [
+            states.disabled,
+            states.disconnected,
+            states.not_initialized,
+        ].includes(data.state);
+    },
+
+    isEnabled() {
+        return data.state === states.enabled;
+    },
+
+    isDisconnected() {
+        return [states.disconnected, states.not_initialized].includes(data.state);
+    },
+
+};
+
+export default Krisp;
