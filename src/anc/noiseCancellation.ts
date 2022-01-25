@@ -31,31 +31,41 @@ export async function initANC(): Promise<NoiseCancellation2> {
   return anc;
 }
 
-async function initKrisp() {
-  // const KrispModule = makeKrisp();
-  const Krisp = await makeKrisp();
-  await Krisp.init(false /* isVad */);
+export function getANC(): NoiseCancellation2 | null {
+  return anc;
+}
 
-  return {
-    connect: (track: MediaStreamTrack) => {
-      const mediaStream = Krisp.connect(new MediaStream([track]));
-      if (!mediaStream) {
-        throw new Error('Error connecting to Krisp');
-      }
-      const cleanTrack = mediaStream.getAudioTracks()[0];
-      if (!cleanTrack) {
-        throw new Error('Error getting clean track from Krisp');
-      }
-      return cleanTrack;
-    },
-    disconnect: () => {
-      Krisp.disconnect();
-    },
-    isActive: () => {
-      return Krisp.isEnabled();
-    },
-    kind: () => 'krisp',
-  };
+// must call this function on user action.
+// krisp create audio context which fails if not called
+// on user action.
+async function initKrisp() {
+  try {
+    const Krisp = await makeKrisp();
+    await Krisp.init(false /* isVad */);
+    return {
+      connect: (track: MediaStreamTrack) => {
+        const mediaStream = Krisp.connect(new MediaStream([track]));
+        if (!mediaStream) {
+          throw new Error('Error connecting to Krisp');
+        }
+        const cleanTrack = mediaStream.getAudioTracks()[0];
+        if (!cleanTrack) {
+          throw new Error('Error getting clean track from Krisp');
+        }
+        return cleanTrack;
+      },
+      disconnect: () => {
+        Krisp.disconnect();
+      },
+      isActive: () => {
+        return Krisp.isEnabled();
+      },
+      kind: () => 'krisp',
+    };
+  } catch (error) {
+    console.warn('Krisp.init failed:', error);
+    throw error;
+  }
 }
 
 export async function removeNoiseFromMSTrack(msTrack: MediaStreamTrack): Promise<NoiseCancellationWithTrack> {

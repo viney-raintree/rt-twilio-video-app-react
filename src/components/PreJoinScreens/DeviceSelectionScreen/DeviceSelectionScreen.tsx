@@ -9,6 +9,8 @@ import ToggleVideoButton from '../../Buttons/ToggleVideoButton/ToggleVideoButton
 import { useAppState } from '../../../state';
 import useChatContext from '../../../hooks/useChatContext/useChatContext';
 import useVideoContext from '../../../hooks/useVideoContext/useVideoContext';
+import { initANC } from '../../../anc/noiseCancellation';
+import { group } from 'console';
 
 const useStyles = makeStyles((theme: Theme) => ({
   gutterBottom: {
@@ -66,6 +68,20 @@ export default function DeviceSelectionScreen({ name, roomName, setStep }: Devic
   const disableButtons = isFetching || isAcquiringLocalTracks || isConnecting;
 
   const handleJoin = () => {
+    // this is first user interaction.
+    // use it to init Krisp.
+
+    console.group('makarand: calling makeANC');
+    initANC()
+      .then(() => {
+        console.log('makarand: calling makeANC Success!');
+      })
+      .catch((error: any) => {
+        console.log('makarand: error calling makeANC:', error);
+      })
+      .finally(() => {
+        console.groupEnd();
+      });
     getToken(name, roomName).then(({ token }) => {
       videoConnect(token);
       process.env.REACT_APP_DISABLE_TWILIO_CONVERSATIONS !== 'true' && chatConnect(token);

@@ -1,7 +1,7 @@
 import { DEFAULT_VIDEO_CONSTRAINTS, SELECTED_AUDIO_INPUT_KEY, SELECTED_VIDEO_INPUT_KEY } from '../../../constants';
 import { getDeviceInfo, isPermissionDenied } from '../../../utils';
 import { useCallback, useState } from 'react';
-import { initANC } from '../../../anc/noiseCancellation';
+import { getANC } from '../../../anc/noiseCancellation';
 import Video, {
   LocalVideoTrack,
   LocalAudioTrack,
@@ -24,34 +24,44 @@ function updateAudioOptions(options: CreateLocalTrackOptions, useANC: boolean) {
 }
 
 async function video_createLocalTracks(options: CreateLocalTracksOptions, useANC: boolean) {
-  const anc = await initANC();
+  console.group('makarand: video_createLocalTracks');
+  try {
+    const anc = getANC();
+    if (options.audio) {
+      options.audio = typeof options.audio === 'object' ? options.audio : {};
+      updateAudioOptions(options.audio, anc !== null && useANC);
+    }
 
-  if (options.audio) {
-    options.audio = typeof options.audio === 'object' ? options.audio : {};
-    updateAudioOptions(options.audio, useANC);
+    console.log('makarand: createLocalTracks');
+    const localTracks = await Video.createLocalTracks(options);
+    console.log('makarand: createLocalTracks done');
+    const localVideoTrack = localTracks.find(track => track.kind === 'video') as LocalVideoTrack;
+    let localAudioTrack = localTracks.find(track => track.kind === 'audio') as LocalAudioTrack;
+    if (localAudioTrack && useANC && anc !== null) {
+      localAudioTrack = new LocalAudioTrack(anc.connect(localAudioTrack.mediaStreamTrack));
+    }
+    return { localVideoTrack, localAudioTrack };
+  } catch (error) {
+    console.warn('makarand: video_createLocalTracks failed:', error);
+    throw error;
+  } finally {
+    console.log('makarand: video_createLocalTracks finally');
+    console.groupEnd();
   }
-
-  const localTracks = await Video.createLocalTracks(options);
-  const localVideoTrack = localTracks.find(track => track.kind === 'video') as LocalVideoTrack;
-  let localAudioTrack = localTracks.find(track => track.kind === 'audio') as LocalAudioTrack;
-  if (localAudioTrack && useANC) {
-    localAudioTrack = new LocalAudioTrack(anc.connect(localAudioTrack.mediaStreamTrack));
-  }
-  return { localVideoTrack, localAudioTrack };
 }
 
 async function video_createLocalAudioTrack(useANC: boolean, deviceId?: string) {
-  const anc = await initANC();
+  const anc = getANC();
 
   const options: CreateLocalTrackOptions = {};
   if (deviceId) {
     options.deviceId = { exact: deviceId };
   }
-  updateAudioOptions(options, useANC);
+  updateAudioOptions(options, useANC && anc !== null);
 
   const localAudioTrack = await Video.createLocalAudioTrack(options);
 
-  if (useANC) {
+  if (useANC && anc !== null) {
     const cleanTrack = anc.connect(localAudioTrack.mediaStreamTrack);
     return new LocalAudioTrack(cleanTrack);
   } else {
@@ -199,6 +209,10 @@ export default function useLocalTracks() {
         if (isMicrophonePermissionDenied) {
           throw new Error('MicrophonePermissionsDenied');
         }
+      })
+      .catch(error => {
+        console.log('makarand: video_createLocalTracks Error:', error);
+        throw error;
       })
       .finally(() => setIsAcquiringLocalTracks(false));
   }, [audioTrack, videoTrack, isAcquiringLocalTracks, isUsingANC]);

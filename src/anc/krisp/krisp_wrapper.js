@@ -5,7 +5,7 @@ export async function makeKrisp() {
     console.log('loading krisp sdk');
     const KrispModule = await import(/* webpackIgnore: true */ krispModulePath);
     Krisp = KrispModule.default;
-    console.log('done loading krisp sdk');
-    return Krisp;
+    console.log('done loading krisp sd:', Krisp);
   }
+  return Krisp;
 }

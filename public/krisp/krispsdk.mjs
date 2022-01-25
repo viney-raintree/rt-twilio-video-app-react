@@ -51,7 +51,8 @@ const modelTypes = Object.freeze({
 
 const utils = Object.freeze({
     getProcessor() {
-        return "./../wasm/debug/krisp.processor.js";
+        // return "./../wasm/debug/krisp.processor.js";
+        return "/krisp/wasm/debug/krisp.processor.js";
     },
 
     getNodeName() {
@@ -94,6 +95,7 @@ const utils = Object.freeze({
 
 const filterFactory = Object.freeze({
     async create(audioContext, modelType) {
+        console.log('makarand: filterFactory.create 1');
         if (!NativeAudioContext) {
             throw new Error(errors.no_support);
         }
@@ -104,9 +106,13 @@ const filterFactory = Object.freeze({
 
         const nodeName = utils.getNodeName();
         const script = utils.getProcessor();
+        console.log('makarand: filterFactory.create 2');
         const data = await utils.getModelData(modelType);
+        console.log('makarand: filterFactory.create 3');
         await audioContext.audioWorklet.addModule(script);
+        console.log('makarand: filterFactory.create 4');
         const filter = new KrispFilter(audioContext, nodeName);
+        console.log('makarand: filterFactory.create 5');
         filter.port.postMessage({
             isVad: modelType === modelTypes.model_vad,
             type: "init",
@@ -153,21 +159,27 @@ const Krisp = {
     }),
 
     async init(isVad, audioContext) {
+        console.log('makarand: krisp.init 1');
         if (Krisp.isInitialized()) {
             throw new Error(errors.already_init);
         }
+        console.log('makarand: krisp.init 2');
 
         if (!NativeAudioContext) {
             throw new Error(errors.no_support);
         }
 
+        console.log('makarand: krisp.init 3');
         data.contextWasProvided = audioContext instanceof NativeAudioContext;
 
         data.context = data.contextWasProvided
             ? audioContext
             : new NativeAudioContext();
 
+            console.log('makarand: krisp.init 4');
+
         data.filter = await this.FilterFactory.create(data.context, isVad);
+        console.log('makarand: krisp.init 5');
         data.state = states.initialized;
     },
 
