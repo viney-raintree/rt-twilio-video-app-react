@@ -7,7 +7,7 @@ import useANCToggle from '../../../hooks/useRNNoiseToggle/useANCToggle';
 
 export default function ToggleRNNoiseButton(props: { disabled?: boolean; className?: string }) {
   const [isEnabled, toggle, noiseCancellationKind] = useANCToggle();
-  const noANC = noiseCancellationKind === 'none';
+  const noANC = false;
 
   return (
     <Button

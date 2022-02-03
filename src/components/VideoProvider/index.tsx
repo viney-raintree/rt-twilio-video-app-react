@@ -31,10 +31,6 @@ export interface IVideoContext {
   removeLocalVideoTrack: () => void;
   removeLocalAudioTrack: () => void;
   isSharingScreen: boolean;
-  isUsingANC: boolean;
-  enableANC: () => void;
-  disableANC: () => void;
-  noiseCancellationKind: string;
   toggleScreenShare: () => void;
   getAudioAndVideoTracks: () => Promise<void>;
   isBackgroundSelectionOpen: boolean;
@@ -62,9 +58,6 @@ export function VideoProvider({ options, children, onError = () => {} }: VideoPr
 
   const {
     localTracks,
-    disableANC,
-    enableANC,
-    isUsingANC,
     getLocalVideoTrack,
     getLocalAudioTrack,
     isAcquiringLocalTracks,
@@ -100,10 +93,6 @@ export function VideoProvider({ options, children, onError = () => {} }: VideoPr
         room,
         localTracks,
         isConnecting,
-        disableANC,
-        enableANC,
-        isUsingANC,
-        noiseCancellationKind: 'krisp',
         onError: onErrorCallback,
         getLocalVideoTrack,
         getLocalAudioTrack,
