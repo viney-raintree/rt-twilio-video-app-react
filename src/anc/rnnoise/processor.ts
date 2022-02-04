@@ -78,7 +78,12 @@ class RNNNoiseProcessor extends AudioWorkletProcessor {
       }
     } else {
       // rnnoise is turned off.
-      outputs[0][0].set(inputs[0][0]);
+      if (inputs[0] && inputs[0][0]) {
+        outputs[0][0].set(inputs[0][0]);
+      } else {
+        console.warn('got invalid inputs, happens when source is disconnected :', inputs);
+        return false;
+      }
     }
     processCount++;
     if (processCount % 111 === 0) {

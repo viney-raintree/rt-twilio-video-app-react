@@ -24,15 +24,25 @@ export async function initANC(): Promise<NoiseCancellation> {
 }
 
 async function initRNNoise() {
-  let rnnoiseNode: RNNoiseNode | null = null;
   const audio_context = new AudioContext({ sampleRate: 48000 });
   await RNNoiseNode.register(audio_context);
 
+  let data: {
+    stream: MediaStream;
+    sourceNode: MediaStreamAudioSourceNode;
+    rnnoiseNode: RNNoiseNode;
+    destinationNode: MediaStreamAudioDestinationNode;
+  } | null = null;
+
   return {
     connect: (track: MediaStreamTrack) => {
+      if (data) {
+        throw new Error('already connected');
+      }
+
       const stream = new MediaStream([track]);
       const sourceNode = audio_context.createMediaStreamSource(stream);
-      rnnoiseNode = new RNNoiseNode(audio_context);
+      const rnnoiseNode = new RNNoiseNode(audio_context);
       const destinationNode = audio_context.createMediaStreamDestination();
 
       sourceNode.connect(rnnoiseNode);
@@ -44,15 +54,27 @@ async function initRNNoise() {
       }
       const cleanTrack = mediaStream.getAudioTracks()[0];
       if (!cleanTrack) {
-        throw new Error('Error getting clean track from Krisp');
+        throw new Error('Error getting clean track from RNNoise');
       }
+
+      rnnoiseNode.update(true);
+      data = { sourceNode, rnnoiseNode, destinationNode, stream };
+      console.log(data);
       return cleanTrack;
     },
     disconnect: () => {
-      // does not really disconnect.
+      if (!data) {
+        throw new Error('not connected');
+      }
+      data.rnnoiseNode.update(false);
+      data.rnnoiseNode.disconnect();
+      data.sourceNode.disconnect();
+      data.destinationNode.disconnect();
+      data.stream.getTracks().forEach(track => track.stop());
+      data = null;
     },
     isActive: () => {
-      return rnnoiseNode !== null && rnnoiseNode.getIsActive();
+      return data !== null && data.rnnoiseNode.getIsActive();
     },
     kind: () => 'rnnoise',
   };

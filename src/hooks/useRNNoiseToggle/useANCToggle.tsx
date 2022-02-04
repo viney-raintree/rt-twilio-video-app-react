@@ -8,9 +8,10 @@ let toggleANC_call = 0;
 export default function useANCToggle() {
   let useANCToggleCall = component_call++;
   console.log(`${useANCToggleCall}:makarand: useANCToggle`);
-  const { removeLocalAudioTrack, getLocalAudioTrack, room, localTracks, onError } = useVideoContext();
+  const { removeLocalAudioTrack, getLocalAudioTrack, room, onError } = useVideoContext();
   const [isReplacing, setIsReplacing] = useState(false);
   const [isUsingANC, setIsUsingANC] = useState(false);
+  const [noiseCancellationKind, setNoiseCancellationKind] = useState('none');
 
   useEffect(() => {
     // when 1st time this is called we need to initANC.
@@ -27,6 +28,7 @@ export default function useANCToggle() {
     log(`isUsingANC = ${isUsingANC}`);
     log('calling initANC');
     const anc = await initANC();
+    setNoiseCancellationKind(anc.kind);
     log('done calling initANC');
 
     const localParticipant = room?.localParticipant;
@@ -82,6 +84,5 @@ export default function useANCToggle() {
     onError,
   ]);
 
-  const noiseCancellationKind = 'krisp';
   return [isUsingANC, toggleANC, noiseCancellationKind] as const;
 }
