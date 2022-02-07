@@ -71,13 +71,12 @@ export default function DeviceSelectionScreen({ name, roomName, setStep }: Devic
     // this is first user interaction.
     // use it to init Krisp.
 
-    console.group('makarand: calling makeANC');
     initANC()
       .then(() => {
-        console.log('makarand: calling makeANC Success!');
+        console.log('makeANC Success!');
       })
       .catch((error: any) => {
-        console.log('makarand: error calling makeANC:', error);
+        console.warn('error calling makeANC:', error);
       })
       .finally(() => {
         console.groupEnd();

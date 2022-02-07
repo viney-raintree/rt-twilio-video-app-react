@@ -29,8 +29,6 @@ export default function ParticipantTracks({
   const publications = usePublications(participant);
 
   let filteredPublications;
-  console.log('Participant audio Tracks: ', publications.filter(p => p.kind === 'audio').length);
-
   if (enableScreenShare && publications.some(p => p.trackName.includes('screen'))) {
     // When displaying a screenshare track is allowed, and a screen share track exists,
     // remove all video tracks without the name 'screen'.

@@ -3,13 +3,17 @@ import { makeKrisp } from './krisp/krisp_wrapper.js';
 
 export interface NoiseCancellation {
   isActive: () => boolean; // is noise cancellation currently active?
-  disconnect: () => void;
+  disconnect: () => void; // disconnect from the node.
   connect: (track: MediaStreamTrack) => MediaStreamTrack;
   kind: () => string;
 }
 
 const urlParams = new URLSearchParams(window.location.search);
 const ancOption = (urlParams.get('anc') || 'krisp').toLowerCase();
+
+export function getANCKind() {
+  return ancOption;
+}
 
 let anc: NoiseCancellation | null = null;
 export async function initANC(): Promise<NoiseCancellation> {
@@ -93,11 +97,10 @@ async function initKrisp() {
     await Krisp.init(false /* isVad */);
     // @ts-ignore
     window.Krisp = Krisp;
-    console.log('makarand: initKrisp done');
-    Krisp.setLogging(true);
+    console.log('initKrisp done');
+    // Krisp.setLogging(true);
     return {
       connect: (track: MediaStreamTrack) => {
-        console.log('makarand: initKrisp.connect 1');
         const mediaStream = Krisp.connect(new MediaStream([track]));
         if (!mediaStream) {
           throw new Error('Error connecting to Krisp');
@@ -106,7 +109,6 @@ async function initKrisp() {
         if (!cleanTrack) {
           throw new Error('Error getting clean track from Krisp');
         }
-        console.log('makarand: initKrisp.connect 2');
         Krisp.enable();
         return cleanTrack;
       },

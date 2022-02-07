@@ -7,17 +7,15 @@ import useANCToggle from '../../../hooks/useRNNoiseToggle/useANCToggle';
 
 export default function ToggleRNNoiseButton(props: { disabled?: boolean; className?: string }) {
   const [isEnabled, toggle, noiseCancellationKind] = useANCToggle();
-  const noANC = false;
-
   return (
     <Button
       className={props.className}
       onClick={toggle}
-      disabled={noANC || props.disabled}
+      disabled={props.disabled}
       startIcon={isEnabled ? <VideoOnIcon /> : <VideoOffIcon />}
       data-cy-audio-toggle
     >
-      {noANC ? 'No ANC' : isEnabled ? `Disable ${noiseCancellationKind}` : `Enable ${noiseCancellationKind}`}
+      {isEnabled ? `Disable ${noiseCancellationKind}` : `Enable ${noiseCancellationKind}`}
     </Button>
   );
 }

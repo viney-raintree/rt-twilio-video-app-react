@@ -11,12 +11,10 @@ export default function usePublications(participant: Participant) {
     setPublications(Array.from(participant.tracks.values()) as TrackPublication[]);
 
     const publicationAdded = (publication: TrackPublication) => {
-      console.log('publication++');
       setPublications(Array.from(participant.tracks.values()) as TrackPublication[]);
     };
 
     const publicationRemoved = (publication: TrackPublication) => {
-      console.log('publication--');
       setPublications(Array.from(participant.tracks.values()) as TrackPublication[]);
     };
 
