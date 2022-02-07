@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { TwilioError } from 'twilio-video';
+import { LocalAudioTrack, TwilioError } from 'twilio-video';
 import { getANCKind, initANC } from '../../anc/noiseCancellation';
 import useVideoContext from '../useVideoContext/useVideoContext';
 
@@ -36,23 +36,21 @@ export default function useANCToggle() {
           localParticipant?.emit('trackUnpublished', localTrackPublication);
           removeLocalAudioTrack();
           try {
-            const willUseANC = !isUsingANC;
-            const track = await getLocalAudioTrack({
-              noiseSuppression: !willUseANC,
+            const useANC = !isUsingANC;
+            let newTrack = await getLocalAudioTrack({
+              noiseSuppression: !useANC,
             });
-            log('got audioTrack with noiseSuppression: ', track.mediaStreamTrack.getSettings().noiseSuppression);
+            log('got audioTrack with noiseSuppression: ', newTrack.mediaStreamTrack.getSettings().noiseSuppression);
             // get it cleaned.
-            if (isUsingANC) {
-              // just publish the track
-              anc.disconnect();
-              await localParticipant?.publishTrack(track);
-              setIsUsingANC(false);
+            if (useANC) {
+              const cleanTrack = anc.connect(newTrack.mediaStreamTrack);
+              newTrack = new LocalAudioTrack(cleanTrack);
             } else {
-              const cleanTrack = anc.connect(track.mediaStreamTrack);
-              await localParticipant?.publishTrack(cleanTrack);
-              log('published audio track again');
-              setIsUsingANC(true);
+              anc.disconnect();
             }
+            await localParticipant?.publishTrack(newTrack);
+            setIsUsingANC(useANC);
+            log('published new audio track');
           } catch (error) {
             let err = error as Error | TwilioError;
             onError(err);

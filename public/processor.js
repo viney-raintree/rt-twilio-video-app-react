@@ -52,7 +52,6 @@ class RNNNoiseProcessor extends AudioWorkletProcessor {
             }
             else {
                 console.warn('got invalid inputs, happens when source is disconnected :', inputs);
-                // TODO: add a message that tells RNNNoiseProcessor of being disconnected.
                 return false;
             }
         }
